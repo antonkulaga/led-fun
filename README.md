@@ -1,6 +1,6 @@
 # led-fun
 
-Experiments with LED programming using USB-controlled LED devices.
+A Python library and CLI tool for controlling LED badge displays via USB. Display custom text, animations, and icons on 11x44 LED badge devices.
 
 ## Prerequisites
 
@@ -199,6 +199,140 @@ To see all available options and their descriptions:
 uv run led-fun --help
 ```
 
+## Architecture
+
+The project is organized into modular components for maintainability and clarity:
+
+### Module Structure
+
+```
+led_fun/
+├── __init__.py       # Public API exports
+├── font.py           # Font data and bitmap conversion
+├── device.py         # USB communication layer
+├── cli.py            # Command-line interface
+└── main.py           # Device detection utility
+```
+
+### Modules
+
+#### `font.py` - Font and Bitmap Handling
+Contains the `SimpleTextAndIcons` class which handles:
+- Character font data storage (11x44 pixel format)
+- Text-to-bitmap conversion
+- Icon embedding and image loading
+- Support for special characters and international characters
+
+#### `device.py` - USB Communication
+Contains two main classes:
+- `WriteLibUsb`: Low-level USB communication using pyusb
+- `LedNameBadge`: High-level protocol handler for LED badges
+
+Handles:
+- USB device detection and initialization
+- Protocol header generation
+- Data transmission to LED displays
+
+#### `cli.py` - Command-Line Interface
+Provides the user-facing CLI using Typer:
+- Message formatting and validation
+- Parameter parsing (speed, mode, brightness, etc.)
+- Coordination between font and device modules
+
+### How Text is Converted to LEDs
+
+The LED display uses a bitmap-based character encoding system:
+
+#### Character Format
+- Each character is **11 bytes** (one byte per row)
+- Each byte represents **8 horizontal pixels**
+- Display is **11 pixels tall** × **8 pixels wide** per character
+- **1** = LED ON, **0** = LED OFF
+
+#### Hex to Binary Example
+
+The letter **'A'** is stored as:
+```python
+0x00, 0x38, 0x6c, 0xc6, 0xc6, 0xfe, 0xc6, 0xc6, 0xc6, 0xc6, 0x00
+```
+
+Converting each hex byte to binary (8 pixels):
+```
+0x00 = 00000000  →          (empty row)
+0x38 = 00111000  →    ███   
+0x6c = 01101100  →   ██ ██  
+0xc6 = 11000110  →  ██   ██ 
+0xc6 = 11000110  →  ██   ██ 
+0xfe = 11111110  →  ███████ 
+0xc6 = 11000110  →  ██   ██ 
+0xc6 = 11000110  →  ██   ██ 
+0xc6 = 11000110  →  ██   ██ 
+0xc6 = 11000110  →  ██   ██ 
+0x00 = 00000000  →          (empty row)
+```
+
+#### Text-to-LED Pipeline
+
+1. **Input**: User provides text string (e.g., "HELLO")
+2. **Character Lookup**: Each character is mapped to its font data offset
+3. **Bitmap Extraction**: 11 bytes retrieved per character from font data
+4. **Buffer Assembly**: All character bitmaps concatenated into continuous buffer
+5. **Protocol Header**: Added to buffer with display settings (speed, mode, brightness)
+6. **USB Transfer**: Complete buffer sent to device in 64-byte chunks
+
+#### Protocol Structure
+
+The complete data buffer sent to the device:
+```
+[64-byte header][message 1 bitmap][message 2 bitmap]...[padding]
+```
+
+**Header contains**:
+- Magic bytes (`wang`)
+- Brightness setting (25%, 50%, 75%, 100%)
+- Mode for each message (scroll, static, animation, etc.)
+- Speed for each message (1-8)
+- Special effects (blink, animated border)
+- Message lengths
+- Timestamp
+
+#### Why Hexadecimal?
+
+Hex is used because:
+- **Compact**: `0xfe` is shorter than `11111110`
+- **Readable**: Easier to recognize patterns than long binary strings
+- **Standard**: Common format for low-level data representation
+
+### Example: Displaying "HI"
+
+```python
+from led_fun import SimpleTextAndIcons, LedNameBadge
+from array import array
+
+# Create font handler
+font = SimpleTextAndIcons()
+
+# Convert "HI" to bitmap
+bitmap, width = font.bitmap_text("HI")
+# Returns: 22 bytes (11 for 'H' + 11 for 'I')
+
+# Create protocol header
+header = LedNameBadge.header(
+    lengths=[width],
+    speeds=[4],
+    modes=[0],
+    blinks=[0],
+    ants=[0],
+    brightness=100
+)
+
+# Assemble and send
+buf = array('B')
+buf.extend(header)
+buf.extend(bitmap)
+LedNameBadge.write(buf)
+```
+
 ## Development
 
 This project uses:
@@ -221,10 +355,30 @@ The project includes a CLI entry point configured in `pyproject.toml`:
 
 ```toml
 [project.scripts]
-led-fun = "led_fun.usb_badge:cli_entry"
+led-fun = "led_fun.cli:cli_entry"
 ```
 
 This allows the `led-fun` command to be available after installation.
+
+### Using as a Library
+
+You can also use led-fun as a Python library in your own projects:
+
+```python
+from led_fun import SimpleTextAndIcons, LedNameBadge
+from array import array
+
+# Create message
+font = SimpleTextAndIcons()
+bitmap, width = font.bitmap_text("Hello!")
+
+# Send to device
+header = LedNameBadge.header([width], [4], [0], [0], [0], brightness=100)
+buf = array('B')
+buf.extend(header)
+buf.extend(bitmap)
+LedNameBadge.write(buf)
+```
 
 ## License
 
