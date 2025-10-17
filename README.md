@@ -37,34 +37,22 @@ uv sync
 
 On Linux, you need to set up proper USB device permissions to access the LED device without root privileges.
 
-### Create a udev rule
-
-1. Create a new udev rules file:
+Run the provided setup script:
 
 ```bash
-sudo nano /etc/udev/rules.d/99-led-device.rules
+./bin/setup_usb_permissions.sh
 ```
 
-2. Add the following rule (replace `YOUR_USERNAME` with your actual username):
+This script will:
+- Create the necessary udev rules
+- Add your user to the `plugdev` group (if the group exists)
+- Reload the udev rules automatically
 
-```
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5020", MODE="0666", GROUP="plugdev"
-```
+**Important:** After running the script, you need to either:
+- Log out and log back in, OR
+- Reboot your system
 
-Or to allow access for a specific user:
-
-```
-SUBSYSTEM=="usb", ATTRS{idVendor}=="0416", ATTRS{idProduct}=="5020", MODE="0666", OWNER="YOUR_USERNAME"
-```
-
-3. Reload udev rules:
-
-```bash
-sudo udevadm control --reload-rules
-sudo udevadm trigger
-```
-
-4. Unplug and replug your LED device.
+Then unplug and replug your LED device for the new permissions to take effect.
 
 ### Verify USB device is detected
 

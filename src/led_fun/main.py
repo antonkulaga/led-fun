@@ -22,6 +22,9 @@ def main():
     if (len(devs) == 0):
         print("No device found")
         return
+    print(f"Found {len(devs)} device(s):")
+    for did, (descr, d, ep) in devs.items():
+        print(f"  [{did}] {descr}")
 
 if __name__ == "__main__":
     main()
